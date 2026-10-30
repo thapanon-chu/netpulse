@@ -119,9 +119,13 @@ No Python installation or command-line configuration is required.
 
 NetPulse operates on a three-tier decoupled architecture separating high-frequency telemetry collection, persistent local storage, and real-time visualization:
 
-<p align="center">
-  <img src="assets/architecture.png" alt="NetPulse System Architecture" width="100%" />
-</p>
+```mermaid
+graph TD
+    A["Windows Network Sockets"] -->|"Raw Socket & Ping I/O"| B["1. Telemetry Daemon<br/>(tracker.py)"]
+    B -->|"1s WAL Mode Writes"| C[("Local SQLite Database<br/>(network_data.db)")]
+    C -->|"Indexed SQL Queries"| D["2. Interactive Dashboard<br/>(app.py :8501)"]
+    E["3. System Tray Launcher<br/>(tray_app.py)"] -.->|"Quick Launch & Status"| D
+```
 
 | Tier | Component | Implementation | Primary Responsibilities |
 | :--- | :--- | :--- | :--- |
