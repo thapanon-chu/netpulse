@@ -1,0 +1,8 @@
+network_data.db
+network_data.db-shm
+network_data.db-wal
+speedtest.exe
+speedtest
+__pycache__/
+*.pyc
+.venv/

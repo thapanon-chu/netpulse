@@ -1,0 +1,8 @@
+{
+  "highlight_anomalies": true,
+  "smoothing_sec": 5,
+  "chart_auto_refresh": "None",
+  "latency_sla_ms": 250,
+  "packet_loss_warn_pct": 1.0,
+  "theme": "dark"
+}
