@@ -15,7 +15,8 @@ netpulse/
 │   ├── DESIGN.md
 │   ├── PRODUCT.md
 │   └── speedtest.md
-├── scripts/                # Startup automation and background utility scripts
+├── scripts/                # Startup automation and build utility scripts
+│   ├── build_portable.ps1
 │   ├── Restart-NetworkTracker.bat
 │   ├── run_tray.vbs
 │   └── setup_startup.py
@@ -24,6 +25,8 @@ netpulse/
 ├── analytics.py            # Statistical processing, ridge forecasting, and data modeling
 ├── app.py                  # Interactive dashboard interface (Streamlit and Plotly)
 ├── requirements.txt        # Python package dependencies
+├── Start-NetPulse.bat      # One-click background launcher for end users
+├── Stop-NetPulse.bat       # One-click service terminator
 ├── tracker.py              # High-frequency background telemetry collection daemon
 ├── tray_app.py             # Windows taskbar system tray indicator
 ├── user_settings.json      # Persistent threshold and UI preferences
@@ -114,25 +117,23 @@ No Python installation or command-line configuration is required.
 
 ## Architecture & System Design
 
-NetPulse operates on a three-tier decoupled architecture:
+NetPulse operates on a three-tier decoupled architecture separating high-frequency telemetry collection, persistent local storage, and real-time visualization:
 
-```text
-+--------------------------------------------------------------+
-|                       Windows Operating System                |
-+------------------------------+-------------------------------+
-| 1. Telemetry Daemon          | tracker.py                    |
-|    (Background Service)      | Samples socket I/O and ping   |
-|                              | Writes to local SQLite (WAL)  |
-+------------------------------+-------------------------------+
-| 2. Interactive Dashboard     | app.py (Streamlit and Plotly) |
-|    (Web UI on Port 8501)     | Real-time KPIs, charts, ML    |
-|                              | RAM pre-fetching & fragments  |
-+------------------------------+-------------------------------+
-| 3. System Tray Launcher      | tray_app.py (pystray)         |
-|    (Taskbar Notification)    | Quick launch / tray minimize  |
-|                              | Status indication             |
-+------------------------------+-------------------------------+
+```mermaid
+flowchart TD
+    subgraph OS["Windows Operating System"]
+        A["Network Interface & Sockets"] --> B["1. Telemetry Daemon<br/><code>tracker.py</code>"]
+        B -->|"1s high-frequency writes"| C[("Local SQLite Database<br/><code>network_data.db</code> (WAL Mode)")]
+        C -->|"Low-latency indexed queries"| D["2. Interactive Dashboard<br/><code>app.py</code> (Port 8501)"]
+        E["3. System Tray Launcher<br/><code>tray_app.py</code>"] -.->|"Quick launch & minimize"| D
+    end
 ```
+
+| Tier | Component | Implementation | Primary Responsibilities |
+| :--- | :--- | :--- | :--- |
+| **1. Telemetry Daemon** | `tracker.py` | `psutil`, `socket`, `sqlite3` | High-frequency background sampling of interface throughput, process socket attribution, ICMP echo latency, and automated Ookla benchmarks; writes directly to local SQLite in WAL mode. |
+| **2. Interactive Dashboard** | `app.py`, `analytics.py` | `streamlit`, `plotly`, `pandas`, `scikit-learn` | Web presentation tier on port 8501 featuring 1-second reactive KPI fragments, dual-rate Plotly waveforms with Gaussian smoothing, Isolation Forest anomaly markers, predictive Ridge forecasting, and RAM pre-fetching. |
+| **3. System Tray Launcher** | `tray_app.py` | `pystray`, `Pillow` | Native Windows taskbar notification tray integration providing background status indication, one-click browser dashboard opening, and quick process management. |
 
 ### Database Isolation & Reliability
 - Storage engine: SQLite operating in `WAL` (Write-Ahead Logging) mode with `PRAGMA synchronous = NORMAL`.
