@@ -272,112 +272,106 @@ def main():
     print("Network tracker started. Press Ctrl+C to stop.")
     try:
         while True:
-            time.sleep(1)
-            
-            current_io = psutil.net_io_counters()
-            current_time = time.time()
-            
-            # Periodic Speedtest strictly at xx:00 and xx:30
-            now_dt = datetime.datetime.now()
-            if now_dt.minute in (0, 30):
-                # Ensure it only runs once during that minute
-                if current_time - last_speedtest_time > 120:
-                    last_speedtest_time = current_time
-                    threading.Thread(target=run_speedtest, daemon=True).start()
+            try:
+                time.sleep(1)
+                
+                current_io = psutil.net_io_counters()
+                current_time = time.time()
+                
+                # Periodic Speedtest strictly at xx:00 and xx:30
+                now_dt = datetime.datetime.now()
+                if now_dt.minute in (0, 30):
+                    # Ensure it only runs once during that minute
+                    if current_time - last_speedtest_time > 120:
+                        last_speedtest_time = current_time
+                        threading.Thread(target=run_speedtest, daemon=True).start()
 
-            # Ignore bandwidth & process recording if speedtest is actively running
-            if is_speedtest_active():
-                # Speedtest is benchmarking the line.
-                # Continuously synchronize baseline counters so zero speedtest traffic
-                # pollutes the database, inflates total GB, or triggers false anomaly spikes.
+                # Ignore bandwidth & process recording if speedtest is actively running
+                if is_speedtest_active():
+                    # Speedtest is benchmarking the line.
+                    # Continuously synchronize baseline counters so zero speedtest traffic
+                    # pollutes the database, inflates total GB, or triggers false anomaly spikes.
+                    last_io = current_io
+                    last_time = current_time
+                    continue
+
+                # Ping every 1 second
+                current_ping = get_ping()
+                
+                time_diff = current_time - last_time
+                if time_diff <= 0:
+                    continue
+                    
+                sent_speed = max(0, (current_io.bytes_sent - last_io.bytes_sent) / time_diff)
+                recv_speed = max(0, (current_io.bytes_recv - last_io.bytes_recv) / time_diff)
+                
+                now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                
+                c.execute('''
+                    INSERT INTO bandwidth (timestamp, bytes_sent, bytes_recv, sent_speed_bps, recv_speed_bps)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (now, current_io.bytes_sent, current_io.bytes_recv, int(sent_speed), int(recv_speed)))
+                
+                if current_ping != -1:
+                    c.execute("INSERT INTO ping (timestamp, ping_ms) VALUES (?, ?)", (now, current_ping))
+                    
                 last_io = current_io
                 last_time = current_time
-                continue
-
-            # Ping every 1 second
-            current_ping = get_ping()
-            
-            time_diff = current_time - last_time
-            if time_diff == 0:
-                continue
                 
-            sent_speed = max(0, (current_io.bytes_sent - last_io.bytes_sent) / time_diff)
-            recv_speed = max(0, (current_io.bytes_recv - last_io.bytes_recv) / time_diff)
-            
-            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            
-            c.execute('''
-                INSERT INTO bandwidth (timestamp, bytes_sent, bytes_recv, sent_speed_bps, recv_speed_bps)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (now, current_io.bytes_sent, current_io.bytes_recv, int(sent_speed), int(recv_speed)))
-            
-            if current_ping != -1:
-                c.execute("INSERT INTO ping (timestamp, ping_ms) VALUES (?, ?)", (now, current_ping))
-                
-            last_io = current_io
-            last_time = current_time
-            
-            try:
-                conns = psutil.net_connections(kind='inet')
-                pids = set()
-                
-                for net_conn in conns:
-                    if net_conn.status == 'ESTABLISHED' and net_conn.pid:
-                        pids.add(net_conn.pid)
-                        p_name = get_process_name(net_conn.pid, process_cache)
-                        if p_name and 'speedtest' in p_name.lower():
-                            _last_speedtest_proc_seen = current_time
-
-                # Track actual IO bytes per process
-                prog_usage = {}
-                current_pids = set()
-                
-                for pid in pids:
-                    try:
-                        p = psutil.Process(pid)
-                        name = get_process_name(pid, process_cache)
-                        if not name or 'speedtest' in name.lower():
-                            continue
-                        
-                        io = p.io_counters()
-                        current_other = io.other_bytes
-                        current_pids.add(pid)
-                        
-                        if pid in last_proc_io:
-                            delta = current_other - last_proc_io[pid]
-                            if delta > 0:
-                                prog_usage[name] = prog_usage.get(name, 0) + delta
-                        last_proc_io[pid] = current_other
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        pass
-                        
-                        io = p.io_counters()
-                        current_other = io.other_bytes
-                        current_pids.add(pid)
-                        
-                        if pid in last_proc_io:
-                            delta = current_other - last_proc_io[pid]
-                            if delta > 0:
-                                prog_usage[name] = prog_usage.get(name, 0) + delta
-                        last_proc_io[pid] = current_other
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        pass
-                
-                # Cleanup cache for dead pids
-                dead_pids = set(last_proc_io.keys()) - current_pids
-                for dp in dead_pids:
-                    del last_proc_io[dp]
-
-                for name, usage_bytes in prog_usage.items():
-                    c.execute('''
-                        INSERT INTO program_usage (timestamp, program_name, usage_bytes)
-                        VALUES (?, ?, ?)
-                    ''', (now, name, usage_bytes))
+                try:
+                    conns = psutil.net_connections(kind='inet')
+                    pids = set()
                     
-            except psutil.AccessDenied:
-                pass
-                
-            conn.commit()
+                    for net_conn in conns:
+                        if net_conn.status == 'ESTABLISHED' and net_conn.pid:
+                            pids.add(net_conn.pid)
+                            p_name = get_process_name(net_conn.pid, process_cache)
+                            if p_name and 'speedtest' in p_name.lower():
+                                _last_speedtest_proc_seen = current_time
+
+                    # Track actual IO bytes per process
+                    prog_usage = {}
+                    current_pids = set()
+                    
+                    for pid in pids:
+                        try:
+                            p = psutil.Process(pid)
+                            name = get_process_name(pid, process_cache)
+                            if not name or 'speedtest' in name.lower():
+                                continue
+                            
+                            io = p.io_counters()
+                            current_other = io.other_bytes
+                            current_pids.add(pid)
+                            
+                            if pid in last_proc_io:
+                                delta = current_other - last_proc_io[pid]
+                                if delta > 0:
+                                    prog_usage[name] = prog_usage.get(name, 0) + delta
+                            last_proc_io[pid] = current_other
+                        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, OSError):
+                            continue
+                    
+                    # Cleanup cache for dead pids
+                    dead_pids = set(last_proc_io.keys()) - current_pids
+                    for dp in dead_pids:
+                        del last_proc_io[dp]
+
+                    for name, usage_bytes in prog_usage.items():
+                        c.execute('''
+                            INSERT INTO program_usage (timestamp, program_name, usage_bytes)
+                            VALUES (?, ?, ?)
+                        ''', (now, name, usage_bytes))
+                        
+                except (psutil.AccessDenied, psutil.Error, OSError):
+                    pass
+                    
+                conn.commit()
+
+            except sqlite3.OperationalError:
+                time.sleep(0.5)
+            except Exception:
+                time.sleep(1)
             
     except KeyboardInterrupt:
         print("Stopping tracker...")
