@@ -66,7 +66,11 @@ _CURRENT_SETTINGS = load_user_settings()
 ACTIVE_THEME = st.session_state.get("active_theme", _CURRENT_SETTINGS.get("theme", "dark"))
 IS_LIGHT_THEME = (ACTIVE_THEME == "light")
 
-icon_img = Image.open(os.path.join(BASE_DIR, "favicon.png"))
+_favicon_path = os.path.join(BASE_DIR, "assets", "favicon.png")
+if not os.path.exists(_favicon_path):
+    _favicon_path = os.path.join(BASE_DIR, "favicon.png")
+icon_img = Image.open(_favicon_path)
+
 st.set_page_config(
     page_title="NetPulse - Usage Tracker",
     page_icon=icon_img,
@@ -75,7 +79,10 @@ st.set_page_config(
 )
 
 # Load brand logo as base64 for fast, crisp inline rendering
-with open(os.path.join(BASE_DIR, "logo.png"), "rb") as _f_logo:
+_logo_path = os.path.join(BASE_DIR, "assets", "logo.png")
+if not os.path.exists(_logo_path):
+    _logo_path = os.path.join(BASE_DIR, "logo.png")
+with open(_logo_path, "rb") as _f_logo:
     _LOGO_B64 = base64.b64encode(_f_logo.read()).decode("utf-8")
 
 # ==============================================================================

@@ -2,7 +2,7 @@ import os
 
 startup_dir = os.path.join(os.environ['APPDATA'], 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup')
 vbs_path = os.path.join(startup_dir, 'NetworkTracker.vbs')
-project_dir = r"C:\Users\NussyEiEi\Desktop\code\Try\Network_rec"
+project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Create a VBScript that runs everything in hidden windows
 vbs_content = f'''Set objShell = WScript.CreateObject("WScript.Shell")

@@ -1,143 +1,159 @@
-# NetPulse — Network Usage Tracker & Diagnostics
+# NetPulse - Network Telemetry and Analytics Suite
 
-NetPulse is a high-performance Windows desktop network telemetry and analytics suite designed for low overhead, 60 FPS responsiveness, and deep network intelligence.
+NetPulse is a lightweight Windows desktop network telemetry and analytics suite designed for low system overhead, responsive visualization, and deep diagnostic insights. It continuously tracks per-interface throughput, per-process socket attribution, ICMP echo latency, and network capacity trends.
 
 ---
 
-## 🏗️ System Architecture
+## Repository Structure
+
+```text
+netpulse/
+├── assets/                 # Application brand icons and graphics
+│   ├── favicon.png
+│   └── logo.png
+├── docs/                   # System design specifications and product context
+│   ├── DESIGN.md
+│   ├── PRODUCT.md
+│   └── speedtest.md
+├── scripts/                # Startup automation and background utility scripts
+│   ├── Restart-NetworkTracker.bat
+│   ├── run_tray.vbs
+│   └── setup_startup.py
+├── .streamlit/             # Streamlit web server and UI theme configuration
+│   └── config.toml
+├── analytics.py            # Statistical processing, ridge forecasting, and data modeling
+├── app.py                  # Interactive dashboard interface (Streamlit and Plotly)
+├── requirements.txt        # Python package dependencies
+├── tracker.py              # High-frequency background telemetry collection daemon
+├── tray_app.py             # Windows taskbar system tray indicator
+├── user_settings.json      # Persistent threshold and UI preferences
+├── LICENSE                 # MIT License
+└── README.md               # Project documentation
+```
+
+---
+
+## Key Capabilities
+
+1. **Live Telemetry & Real-Time KPIs**
+   - 1-second reactive telemetry fragment updating current transfer rates, session totals, and peak speeds.
+   - Dual-rate Plotly waveform with Scope-Adaptive Gaussian wave smoothing and spline Bezier interpolation.
+   - Machine learning anomaly detection using Isolation Forest algorithms.
+
+2. **Per-Process Attribution**
+   - Identifies and tracks network bandwidth consumption grouped by executable name.
+   - Visualizes process-level time-series usage with interactive cumulative and instantaneous rate modes.
+   - Export telemetry history to CSV.
+
+3. **Diagnostics & SLA Monitoring**
+   - Continuous ICMP echo ping latency tracking against user-defined SLA threshold limits.
+   - Real-time packet loss calculation, jitter variance analysis, and ISP Ookla benchmark integration.
+
+4. **Capacity & Predictive Trends**
+   - Diurnal usage pattern decomposition across 4-hour temporal windows.
+   - Ridge regression bandwidth forecasting calibrated against actual historical consumption.
+   - Storage utilization monitoring with automated maintenance routines.
+
+---
+
+## Quick Start
+
+### Option 1: Standalone Portable Bundle (Recommended for End Users)
+
+No Python installation or command-line configuration is required.
+
+1. Download the latest `NetPulse-v2.4-Portable.zip` from the [Releases](https://github.com/thapanon-chu/netpulse/releases) page.
+2. Extract the archive to any folder on your Windows computer.
+3. Double-click `Start-NetPulse.bat` to launch both the background telemetry service and the web dashboard in your default browser.
+4. Double-click `Stop-NetPulse.bat` whenever you wish to shut down all background services.
+
+> Note: All telemetry is stored locally in an isolated SQLite database (`network_data.db`) created inside your directory. No data is transmitted to external servers.
+
+### Option 2: Running from Source (Developer Mode)
+
+#### Prerequisites
+- Windows 10 / 11
+- Python 3.10 or higher
+- Git
+
+#### Installation Steps
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/thapanon-chu/netpulse.git
+   cd netpulse
+   ```
+
+2. Create and activate a virtual environment (optional but recommended):
+   ```bash
+   python -m venv .venv
+   .venv\Scripts\activate
+   ```
+
+3. Install required dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. Launch the telemetry daemon (Terminal 1):
+   ```bash
+   python tracker.py
+   ```
+
+5. Launch the web dashboard (Terminal 2):
+   ```bash
+   streamlit run app.py
+   ```
+
+6. Optional: Launch the system tray icon (Terminal 3):
+   ```bash
+   pythonw tray_app.py
+   ```
+
+---
+
+## Architecture & System Design
 
 NetPulse operates on a three-tier decoupled architecture:
 
-```
-┌────────────────────────────────────────────────────────┐
-│                   Windows System                       │
-├──────────────────────────┬─────────────────────────────┤
-│ 1. Telemetry Daemon      │ tracker.py                  │
-│    (Background Service)  │ Samples socket I/O & ping   │
-│                          │ Writes to SQLite (WAL mode) │
-├──────────────────────────┼─────────────────────────────┤
-│ 2. Interactive Dashboard │ app.py (Streamlit + Plotly) │
-│    (Web GUI / Port 8501) │ Real-time KPIs, charts, ML  │
-│                          │ Proactive RAM pre-fetching  │
-├──────────────────────────┼─────────────────────────────┤
-│ 3. System Tray Launcher  │ tray_app.py (pystray)       │
-│    (Taskbar Notification)│ Quick launch / background   │
-│                          │ Custom circular pulse logo  │
-└──────────────────────────┴─────────────────────────────┘
-```
-
----
-
-## ⚡ Refresh & Real-Time Streaming Architecture
-
-NetPulse uses **Granular Streamlit Fragments** (`@st.fragment`) to separate high-frequency live metric updates from heavy historical chart rendering.
-
-### 1. Active 1-Second Reactive KPIs (Enabled)
-* **Location:** `app.py` $\rightarrow$ `render_live_telemetry_kpis()`
-* **Decorator:** `@st.fragment(run_every="1s")`
-* **Behavior:** Automatically queries the single latest second of throughput metrics from SQLite (`LIMIT 1`) every 1,000 ms.
-* **Scope:** Re-renders *only* the top 4 metric cards (`INBOUND`, `OUTBOUND`, `PEAK`, `DL/UL RATIO`).
-* **Advantage:** Zero page reload, zero DOM flashing, negligible CPU footprint (< 0.1%).
-
-### 2. Throughput Chart Auto-Refresh (Configurable / Disabled by Default)
-* **Location:** `app.py` $\rightarrow$ `render_throughput_chart_panel()`
-* **Decorator:** `@st.fragment(run_every=LIVE_CHART_AUTO_REFRESH_INTERVAL)`
-* **Current Status:** **Disabled by default** (`LIVE_CHART_AUTO_REFRESH_INTERVAL = None`).
-  * The chart operates in **Interactive Snapshot Mode**: data is loaded when entering the view or when clicking the `↻ Refresh` button.
-  * **Why Disabled by Default:**
-    1. **Stable Tooltip Hover:** When exploring anomalies or specific timestamps, periodic re-rendering would reset active Plotly hover tooltips and zoom boxes.
-    2. **Zero Client CPU Waste:** Rendering dense time-series graphs (1,800+ data points) is deferred until user-initiated actions.
-
-#### How to Enable Chart Live Auto-Refresh:
-To turn on live streaming for the Throughput chart, open `app.py` (around line 1435) and set:
-
-```python
-# Change from:
-LIVE_CHART_AUTO_REFRESH_INTERVAL = None
-
-# To your desired interval (recommended 5s or 10s):
-LIVE_CHART_AUTO_REFRESH_INTERVAL = "5s"  # or "10s"
+```text
++--------------------------------------------------------------+
+|                       Windows Operating System                |
++------------------------------+-------------------------------+
+| 1. Telemetry Daemon          | tracker.py                    |
+|    (Background Service)      | Samples socket I/O and ping   |
+|                              | Writes to local SQLite (WAL)  |
++------------------------------+-------------------------------+
+| 2. Interactive Dashboard     | app.py (Streamlit and Plotly) |
+|    (Web UI on Port 8501)     | Real-time KPIs, charts, ML    |
+|                              | RAM pre-fetching & fragments  |
++------------------------------+-------------------------------+
+| 3. System Tray Launcher      | tray_app.py (pystray)         |
+|    (Taskbar Notification)    | Quick launch / tray minimize  |
+|                              | Status indication             |
++------------------------------+-------------------------------+
 ```
 
-* When enabled, the chart will automatically pull the latest telemetry window and stream forward smoothly every 5 or 10 seconds without reloading any other part of the dashboard.
+### Database Isolation & Reliability
+- Storage engine: SQLite operating in `WAL` (Write-Ahead Logging) mode with `PRAGMA synchronous = NORMAL`.
+- Zero Shared State: The application creates a clean, independent `network_data.db` upon initial launch. The database file is excluded from version control to guarantee individual privacy and lightweight repository distribution.
+- Reboot Resilience: Cumulative bandwidth metrics use monotonic non-negative delta calculations (`clip(lower=0).cumsum()`), preventing counter inversions when Windows resets network adapters.
+- Downtime Gap Handling: Discontinuous intervals caused by system sleep or service interruptions are detected and rendered as true zero-level boundaries rather than misleading diagonal interpolations.
 
 ---
 
-## 🧠 Background Data & Cache Management
+## Settings Configuration
 
-### Predictive Pre-fetching Daemon (`_prefetch_worker`)
-* Runs in an independent background thread (`NetPulsePrefetcher`).
-* Once the active view is displayed, the prefetcher quietly warms up:
-  - Adjacent time scopes (`1 Hour`, `6 Hours`, `24 Hours`, `7 Days`, `30 Days`)
-  - Predictive Ridge Regression models and diurnal patterns for *Capacity & Trends*
-* Results are cached directly in RAM (`@st.cache_data`).
-* **Tab Switching Performance:** Navigating between tabs takes **< 380 ms** with zero database read lag.
-
-### Motion Loading Overlay Threshold
-* Configured in CSS (`#netpulse-global-loader`):
-  ```css
-  transition-delay: 0.6s;
-  ```
-* Standard navigation (< 400 ms) completes seamlessly without displaying the black loading card. The loading overlay only fades in if a query genuinely exceeds 600 ms (e.g., massive date range calculations).
+User preferences are persisted locally in `user_settings.json`:
+- `smoothing_sec`: Waveform rolling window size (1s raw bursts, 5s responsive smoothing, 10s ultra-smooth).
+- `highlight_anomalies`: Toggle machine learning anomaly markers on time-series charts.
+- `chart_auto_refresh`: Configurable fragment refresh interval (`None`, `5s`, `10s`).
+- `latency_sla_ms`: Target network latency threshold line.
+- `packet_loss_warn_pct`: Packet loss warning alert boundary.
+- `theme`: UI color palette (`dark` or `light`).
 
 ---
 
-## 💾 Persistent System Settings (`user_settings.json` & Settings Modal)
+## License
 
-Global user interface and engine preferences are managed via the **⚙️ Settings modal** (located on the left navigation rail under the divider line) and permanently persisted using atomic file writes:
-
-* **Waveform Smoothing Window (`smoothing_sec`):**
-  * Options: `1` (Raw 1-second bursts), `5` (Task Manager style smooth wave — Recommended), `10` (Grafana ultra-smooth).
-  * Automatically calculates rolling means on-the-fly during rendering without altering the underlying 1s SQLite database records.
-* **Highlight Anomalies (`highlight_anomalies`):**
-  * Toggles machine learning Isolation Forest markers on the Throughput chart (`True` or `False`).
-* **Live Chart Auto-Refresh (`chart_auto_refresh`):**
-  * Options: `"None"` (Manual snapshot), `"5s"`, `"10s"`.
-  * Dynamically configures the `@st.fragment(run_every=...)` interval of the Throughput panel.
-* **Connection Latency SLA Threshold (`latency_sla_ms`):**
-  * Controls the target SLA limit line (default `100` ms) on the Diagnostics & SLA Connection Latency chart.
-* **Packet Loss Warning Level (`packet_loss_warn_pct`):**
-  * Quality warning threshold percentage (default `1.0`%).
-* **Time Scope (`active_time_scope`):**
-  * Preserved across all 4 tab transitions during the active browser session.
-
----
-
-## 📐 Chart Ground Rule: Inactive Downtime Gap Handling
-
-* **Problem Solved:** When the PC is turned off, asleep, or the tracker daemon is stopped, standard Plotly time-series lines naively bridge the last active point (e.g., 02:00) directly to the next reboot point (e.g., 12:30) with an artificial diagonal line across hours of downtime.
-* **Universal Solution (`sanitize_timeseries_gaps` in `app.py`):**
-  - **Adaptive Gap Detection:** Computes median point intervals and triggers gap breaks whenever `\Delta t > \max(120\text{s}, \text{median\_step} \times 3.5)`.
-  - **Throughput & Bandwidth Rates (`fill='tozeroy'`):** Inserts a 0.0 drop at `prev_time + 1s` to ground the filled polygon, followed by `NaN` sentinels to break the line, and smoothly rises from 0.0 at `next_time - 1s` when tracking resumes.
-  - **Connection Latency (`ping_ms`):** Pure `NaN` boundary insertion with `connectgaps=False`. The latency line abruptly stops at the exact moment of daemon pause without misreporting false 0ms latency.
-  - **Reboot Resilience (Cumulative Bandwidth):** Cumulative metrics use monotonic non-negative delta accumulation (`clip(lower=0).cumsum()`), preventing inverted charts when Windows resets socket counters on reboot.
-* **Scope:** Strictly enforced across **Live Telemetry**, **Process Attribution**, and **Diagnostics & SLA**.
-
----
-
-## 🚀 Running & Managing the Application
-
-### Starting Services Manually:
-```powershell
-# 1. Start Telemetry Tracker Daemon
-python tracker.py
-
-# 2. Start Web Dashboard
-streamlit run app.py --server.headless true
-
-# 3. Start System Tray Icon
-pythonw tray_app.py
-```
-
-### Windows Startup Script:
-NetPulse is automatically configured to launch silently on Windows boot via:
-`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\NetworkTracker.vbs`
-
----
-
-## 📊 Database Schema (`network_data.db`)
-Operates under SQLite `WAL` (Write-Ahead Logging) mode with `PRAGMA synchronous=NORMAL`:
-* `bandwidth`: 1-second interval download/upload rates and cumulative bytes.
-* `program_usage`: Per-process socket bandwidth attribution.
-* `ping`: Continuous ICMP echo latency and packet loss logs.
-* `speedtest`: Periodic ISP Ookla capacity benchmark benchmarks (XX:00 and XX:30).
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
