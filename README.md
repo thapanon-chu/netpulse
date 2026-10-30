@@ -1,6 +1,14 @@
-# NetPulse - Network Telemetry and Analytics Suite
+<div align="center">
 
-NetPulse is a lightweight Windows desktop network telemetry and analytics suite designed for low system overhead, responsive visualization, and deep diagnostic insights. It continuously tracks per-interface throughput, per-process socket attribution, ICMP echo latency, and network capacity trends.
+<img src="assets/logo.png" alt="NetPulse Logo" width="105" />
+
+# NetPulse — Network Telemetry & ML Analytics Suite
+
+A lightweight Windows desktop network telemetry and analytics engine designed for low-overhead socket monitoring, real-time waveform visualization, and predictive machine learning capacity forecasting.
+
+[Download Portable v2.4 (Zip)](https://github.com/thapanon-chu/netpulse/releases/latest) • [Key Capabilities](#key-capabilities) • [Architecture](#system-architecture) • [ML Pipeline](#data-science--machine-learning-pipeline) • [Quick Start](#quick-start)
+
+</div>
 
 ---
 
@@ -8,9 +16,14 @@ NetPulse is a lightweight Windows desktop network telemetry and analytics suite 
 
 ```text
 netpulse/
-├── assets/                 # Application brand icons and graphics
+├── assets/                 # Application brand icons, screenshots, and visual assets
+│   ├── app_showcase.gif
 │   ├── favicon.png
-│   └── logo.png
+│   ├── logo.png
+│   ├── screen_capacity_trends.png
+│   ├── screen_diagnostics_sla.png
+│   ├── screen_live_telemetry.png
+│   └── screen_process_attribution.png
 ├── docs/                   # System design specifications and product context
 │   ├── DESIGN.md
 │   ├── PRODUCT.md
@@ -38,24 +51,40 @@ netpulse/
 
 ## Key Capabilities
 
-1. **Live Telemetry & Real-Time KPIs**
-   - 1-second reactive telemetry fragment updating current transfer rates, session totals, and peak speeds.
-   - Dual-rate Plotly waveform with Scope-Adaptive Gaussian wave smoothing and spline Bezier interpolation.
-   - Machine learning anomaly detection using Isolation Forest algorithms.
+### 1. Live Telemetry & Real-Time KPIs
+- 1-second reactive telemetry fragment updating current transfer rates, session totals, and peak speeds.
+- Dual-rate Plotly waveform with Scope-Adaptive Gaussian wave smoothing and spline Bezier interpolation.
+- Machine learning anomaly detection using Isolation Forest algorithms.
 
-2. **Per-Process Attribution**
-   - Identifies and tracks network bandwidth consumption grouped by executable name.
-   - Visualizes process-level time-series usage with interactive cumulative and instantaneous rate modes.
-   - Export telemetry history to CSV.
+<p align="center">
+  <img src="assets/screen_live_telemetry.png" alt="Live Telemetry Dashboard" width="94%" />
+</p>
 
-3. **Diagnostics & SLA Monitoring**
-   - Continuous ICMP echo ping latency tracking against user-defined SLA threshold limits.
-   - Real-time packet loss calculation, jitter variance analysis, and ISP Ookla benchmark integration.
+### 2. Per-Process Attribution
+- Identifies and tracks network bandwidth consumption grouped by executable name.
+- Visualizes process-level time-series usage with interactive cumulative and instantaneous rate modes.
+- Export telemetry history to CSV.
 
-4. **Capacity & Predictive Trends**
-   - Diurnal usage pattern decomposition across 4-hour temporal windows.
-   - Ridge regression bandwidth forecasting calibrated against actual historical consumption.
-   - Storage utilization monitoring with automated maintenance routines.
+<p align="center">
+  <img src="assets/screen_process_attribution.png" alt="Per-Process Bandwidth Attribution" width="94%" />
+</p>
+
+### 3. Diagnostics & SLA Monitoring
+- Continuous ICMP echo ping latency tracking against user-defined SLA threshold limits.
+- Real-time packet loss calculation, jitter variance analysis, and ISP Ookla benchmark integration.
+
+<p align="center">
+  <img src="assets/screen_diagnostics_sla.png" alt="Diagnostics and SLA Monitoring" width="94%" />
+</p>
+
+### 4. Capacity & Predictive Trends
+- Diurnal usage pattern decomposition across 4-hour temporal windows.
+- Huber M-estimation and Ridge regression bandwidth forecasting calibrated against actual historical consumption.
+- Storage utilization monitoring with automated maintenance routines.
+
+<p align="center">
+  <img src="assets/screen_capacity_trends.png" alt="Capacity and Predictive Trends" width="94%" />
+</p>
 
 ---
 
