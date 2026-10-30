@@ -147,11 +147,11 @@ NetPulse implements specialized statistical learning, time-series modeling, and 
 
 ```mermaid
 graph TD
-    A["1. Data Ingestion<br/>(psutil 1s)"] --> B["2. Signal Preprocessing<br/>(Gaussian Filter)"]
-    B --> C["3. Feature Engineering<br/>(Sin/Cos & Lags)"]
-    C --> D["4. Model Inference<br/>(Huber & Isolation Forest)"]
-    D --> E["5. Quality Audit<br/>(sMAPE & Bias Calibration)"]
-    E --> F["6. Reactive Serving<br/>(Streamlit UI)"]
+    A["1. Data Ingestion"] -->|"psutil 1s socket sampling"| B["2. Signal Preprocessing"]
+    B -->|"Gaussian smoothing & median filter"| C["3. Feature Engineering"]
+    C -->|"Sin/Cos encoding & lag features"| D["4. Model Inference Engine"]
+    D -->|"Huber forecast & Isolation Forest"| E["5. Quality Audit & Calibration"]
+    E -->|"sMAPE evaluation & bias adjustment"| F["6. Reactive Visualization"]
 ```
 
 ### 1. Robust Bandwidth & Capacity Forecasting
