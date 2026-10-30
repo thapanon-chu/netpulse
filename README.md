@@ -145,6 +145,15 @@ graph TD
 
 NetPulse implements specialized statistical learning, time-series modeling, and signal processing routines in `analytics.py` to convert raw socket telemetry into actionable capacity insights.
 
+```mermaid
+flowchart TD
+    A["1. Data Ingestion<br/>(1s High-Frequency Socket Telemetry via psutil)"] --> B["2. Signal Preprocessing<br/>(Scope-Adaptive Gaussian Smoothing & 14d Median Outlier Capping)"]
+    B --> C["3. Feature Engineering<br/>(Cyclical Sin/Cos Encoding, Autoregressive Lags, Exponential Recency)"]
+    C --> D["4. Dual Inference Engine<br/>(Huber Regressor Forecasting & Isolation Forest Anomaly Detection)"]
+    D --> E["5. Closed-Loop Feedback & Calibration<br/>(sMAPE & MAE Continuous Auditing with Dynamic Bias Correction)"]
+    E --> F["6. Reactive Visualization<br/>(Streamlit Real-Time KPI Fragments & Interactive Plotly Dashboards)"]
+```
+
 ### 1. Robust Bandwidth & Capacity Forecasting
 - **Algorithm:** Huber Regressor (`sklearn.linear_model.HuberRegressor`)
 - **Purpose:** Projects 7-day future consumption and predicts month-end total transfer volumes to alert users before exceeding ISP data limits.
