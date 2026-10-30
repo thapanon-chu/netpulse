@@ -145,14 +145,17 @@ graph TD
 
 NetPulse implements specialized statistical learning, time-series modeling, and signal processing routines in `analytics.py` to convert raw socket telemetry into actionable capacity insights.
 
-```mermaid
-graph TD
-    A["1. Data Ingestion"] -->|"psutil 1s socket sampling"| B["2. Signal Preprocessing"]
-    B -->|"Gaussian smoothing & median filter"| C["3. Feature Engineering"]
-    C -->|"Sin/Cos encoding & lag features"| D["4. Model Inference Engine"]
-    D -->|"Huber forecast & Isolation Forest"| E["5. Quality Audit & Calibration"]
-    E -->|"sMAPE evaluation & bias adjustment"| F["6. Reactive Visualization"]
-```
+**Pipeline Lifecycle:**
+`01. Ingestion` &rarr; `02. Signal Preprocessing` &rarr; `03. Feature Engineering` &rarr; `04. Dual Inference` &rarr; `05. Closed-Loop Audit` &rarr; `06. Reactive Serving`
+
+| Stage | Pipeline Phase | Technical Stack | Responsibilities & Data Transformation |
+| :---: | :--- | :--- | :--- |
+| **01** | **Data Ingestion** | `psutil`, `socket` | 1-second interval socket counter sampling, per-process attribution, and ICMP echo latency probes |
+| **02** | **Signal Preprocessing** | Scope-Adaptive Gaussian Filter | Noise filtering with strict volume conservation and 14-day rolling median outlier dampening |
+| **03** | **Feature Engineering** | Cyclical Sin/Cos, Autoregressive Lags | Day-of-week cyclical encoding, dynamic lag extraction (`lag_1`, `roll_3`, `roll_7`, `roll_14`), and exponential weights |
+| **04** | **Dual Inference Engine** | `HuberRegressor`, `IsolationForest` | Robust M-estimation capacity forecasting and unsupervised 2D socket burst anomaly scoring |
+| **05** | **Closed-Loop Audit** | SQLite `forecast_history`, sMAPE, MAE | Continuous prediction error auditing against actuals and dynamic residual bias compensation |
+| **06** | **Reactive Serving** | Streamlit Fragments, Plotly | Sub-second reactive KPI cards on port 8501 and smooth, interactive 60 FPS time-series waveforms |
 
 ### 1. Robust Bandwidth & Capacity Forecasting
 - **Algorithm:** Huber Regressor (`sklearn.linear_model.HuberRegressor`)
