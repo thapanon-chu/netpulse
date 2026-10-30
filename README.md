@@ -143,33 +143,39 @@ graph TD
 
 ## Data Science & Machine Learning Pipeline
 
-NetPulse implements statistical learning, signal processing, and time-series modeling routines in `analytics.py` to extract actionable intelligence from high-frequency telemetry.
+NetPulse implements specialized statistical learning, time-series modeling, and signal processing routines in `analytics.py` to convert raw socket telemetry into actionable capacity insights.
 
-### 1. Robust Time-Series Forecasting (Huber Loss M-Estimation)
-- **Model:** `sklearn.linear_model.HuberRegressor(epsilon=1.35, alpha=1.5)`
-- **Mathematical Formulation:** Traditional Ordinary Least Squares (OLS) regression minimizes squared error $\sum (y_i - \hat{y}_i)^2$, making it vulnerable to single-day outlier events (such as a 100+ GB bulk software download). Huber loss applies a hybrid piecewise criterion: $L_\delta(r) = \frac{1}{2}r^2$ for $|r| \le \delta$, and $\delta\left(|r| - \frac{1}{2}\delta\right)$ for $|r| > \delta$. Residuals smaller than threshold $\delta = 1.35$ receive quadratic penalties, while extreme burst spikes transition to linear penalties. This prevents non-stationary spikes from distorting baseline consumption projections.
-- **Outlier Pre-filtering:** Data points exceeding $2.2 \times$ the rolling 14-day median are dampened prior to model fitting to preserve historical trend integrity.
+### 1. Robust Bandwidth & Capacity Forecasting
+- **Algorithm:** Huber Regressor (`sklearn.linear_model.HuberRegressor`)
+- **Purpose:** Projects 7-day future consumption and predicts month-end total transfer volumes to alert users before exceeding ISP data limits.
+- **Working Principle:** Employs robust M-estimation that automatically balances small residual adjustments with extreme outlier absorption. Unlike standard Ordinary Least Squares (OLS) which gets heavily skewed by a single 100+ GB bulk game download, Huber loss penalizes normal variance quadratically and extreme spikes linearly. This ensures long-term monthly projections remain stable regardless of isolated burst events.
+- **Outlier Dampening:** Data points exceeding 2.2x the rolling 14-day median are capped prior to training to protect baseline trajectory.
 
-### 2. Time-Series Feature Engineering
-- **Cyclical Trigonometric Day-of-Week Encoding:** $\text{dow}_{\sin} = \sin(2\pi \cdot \text{dow} / 7)$ and $\text{dow}_{\cos} = \cos(2\pi \cdot \text{dow} / 7)$, preserving temporal continuity between Sunday and Monday in cyclical coordinate space.
-- **Autoregressive Lags & Rolling Horizons:** Constructs dynamic features including `lag_1` (previous-day consumption), `roll_3` (short-term momentum), `roll_7` (weekly moving average), and `roll_14` (bi-weekly median).
-- **Exponential Recency Weighting:** Samples are weighted via an exponential decay function $w_i = \exp(\text{linspace}(-1.1, 0, N))$, allocating up to $3\times$ higher priority to recent network usage patterns compared to older observations.
-- **Uncertainty Quantification:** Confidence intervals ($\pm 1.28\sigma$, 80% prediction interval) are derived using Median Absolute Deviation ($\text{MAD} \times 1.4826$) for robust variance estimation.
+### 2. Temporal Feature Engineering
+- **Techniques:** Cyclical Trigonometric Day Encoding, Autoregressive Lags, Exponential Recency Weighting
+- **Purpose:** Accurately models human behavioral cycles (such as workday vs. weekend usage patterns) and evolving habits.
+- **Working Principle:**
+  - **Cyclical Day-of-Week:** Converts calendar days (0 to 6) into continuous sine and cosine coordinate features, allowing the model to recognize that Sunday and Monday are contiguous within a weekly cycle.
+  - **Autoregressive Features:** Extracts previous-day baseline (`lag_1`), short-term momentum (`roll_3`), weekly moving average (`roll_7`), and bi-weekly median (`roll_14`).
+  - **Exponential Recency Weighting:** Assigns exponentially higher weights (up to 3x) to recent days compared to older history, enabling rapid adaptation when user streaming or working schedules shift.
+  - **Uncertainty Quantification:** Computes 80% confidence bands using Median Absolute Deviation (MAD) for robust variance estimation without assuming standard Gaussian error distributions.
 
-### 3. Closed-Loop Feedback & Self-Calibrating Bias Correction
-- **Automated Accuracy Auditing:** Daily predictions are logged to the `forecast_history` table in SQLite. When actual consumption data becomes available, the system evaluates:
-  - **Mean Absolute Error (MAE):** $\text{MAE} = \frac{1}{n} \sum |y_i - \hat{y}_i|$
-  - **Symmetric Mean Absolute Percentage Error (sMAPE):** $\text{sMAPE} = \frac{100\%}{n} \sum \frac{2|y_i - \hat{y}_i|}{|y_i| + |\hat{y}_i|}$
-- **Dynamic Bias Calibration:** If a persistent directional bias ($\ge 1.0\text{ GB}$) is detected across the last 7 evaluated days, an adaptive dampening factor $\Delta_{\text{cal}} = \operatorname{clip}(\text{rolling\_bias} \times 0.4, -5.0, 5.0)$ is automatically injected into future forecast horizons.
+### 3. Closed-Loop Feedback & Self-Calibration
+- **Techniques:** Continuous Accuracy Auditing (sMAPE, MAE) and Dynamic Residual Compensation
+- **Purpose:** Tracks historical forecast accuracy against actual observed consumption and self-corrects systematic model drift without requiring manual retraining.
+- **Working Principle:** Every prediction is persisted in an internal SQLite table (`forecast_history`). When actual daily telemetry accumulates, the engine computes Mean Absolute Error (MAE) and Symmetric Mean Absolute Percentage Error (sMAPE). If a consistent directional bias (1+ GB) is detected over the past 7 evaluated days, an adaptive compensation factor is dynamically injected into future prediction horizons.
 
-### 4. Unsupervised Anomaly Detection (Isolation Forest)
-- **Model:** `sklearn.ensemble.IsolationForest(n_estimators=60, contamination=dynamic)`
-- **Multidimensional Vector:** Evaluates 2D joint feature space $[\text{Download Rate}, \text{Upload Rate}]$.
-- **Mechanism:** Isolates unusual bursts by randomly selecting feature splits. Because abnormal anomalies require fewer tree splits to isolate than normal cluster points, the continuous decision score $s(x, n)$ identifies sudden uncharacteristic saturation and anomalous network behavior.
+### 4. Real-Time Network Anomaly Detection
+- **Algorithm:** Isolation Forest (`sklearn.ensemble.IsolationForest`)
+- **Purpose:** Automatically identifies uncharacteristic bandwidth spikes, stealth background uploads, or abnormal socket saturation on live charts.
+- **Working Principle:** Evaluates joint 2D socket vectors (Download Rate vs. Upload Rate). Rather than modeling normal density, Isolation Forest isolates anomalies by randomly partitioning feature space. Because extreme or suspicious bursts require significantly fewer tree splits to isolate than normal cluster points, the model computes decision scores and automatically highlights high-severity outlier events.
 
 ### 5. Digital Signal Processing & Scope-Adaptive Smoothing
-- **Adaptive Gaussian Convolution:** $g(t) = \frac{1}{\sqrt{2\pi}\sigma} \exp\left(-\frac{t^2}{2\sigma^2}\right)$. The smoothing kernel standard deviation $\sigma$ adapts dynamically to the displayed temporal scope ($\sigma=8$ for responsive 1h/6h intervals, $\sigma=30$ for 24h/7d macroscopic overviews), removing high-frequency socket jitter while strictly conserving total transferred volume (integral preservation under the curve).
-- **Spline Bezier Interpolation:** Employs C1 continuous cubic spline fitting over discrete 1-second samples, preventing jagged sawtooth artifacts on high-DPI displays.
+- **Techniques:** Scope-Adaptive Gaussian Kernel Convolution and Spline Bezier Interpolation
+- **Purpose:** Filters out high-frequency socket counter noise to produce clean, intuitive waveforms while strictly preserving exact transfer volume.
+- **Working Principle:**
+  - **Adaptive Gaussian Convolution:** Automatically scales the smoothing window and standard deviation according to the selected view (narrow kernel for responsive 1-hour inspection, wider kernel for 7-day trend analysis). Total area under the curve is strictly conserved so cumulative transfer statistics remain 100% accurate.
+  - **Downtime Gap Handling:** Detects system sleep or daemon interruptions (intervals exceeding 3.5x the median step) and grounds curves to zero rather than drawing misleading diagonal interpolation lines across hours of downtime.
 
 ---
 
