@@ -6,3 +6,6 @@ speedtest
 __pycache__/
 *.pyc
 .venv/
+dist/
+runtime/
+*.zip
