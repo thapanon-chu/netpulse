@@ -14,10 +14,14 @@ def exit_app(icon, item):
 
 # Load the icon using absolute path so it never fails regardless of CWD
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-logo_path = os.path.join(BASE_DIR, "logo.png")
-if not os.path.exists(logo_path):
-    logo_path = os.path.join(BASE_DIR, "favicon.png")
-icon_img = Image.open(logo_path)
+logo_candidates = [
+    os.path.join(BASE_DIR, "assets", "logo.png"),
+    os.path.join(BASE_DIR, "logo.png"),
+    os.path.join(BASE_DIR, "assets", "favicon.png"),
+    os.path.join(BASE_DIR, "favicon.png"),
+]
+logo_path = next((p for p in logo_candidates if os.path.exists(p)), None)
+icon_img = Image.open(logo_path) if logo_path else Image.new("RGB", (64, 64), color=(30, 41, 59))
 
 # Create Menu
 menu = pystray.Menu(
