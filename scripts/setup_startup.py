@@ -1,18 +1,18 @@
 import os, sys
 
+project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_dir not in sys.path:
+    sys.path.insert(0, project_dir)
+
+from daemon_manager import get_python_executables
+
 startup_dir = os.path.join(os.environ['APPDATA'], 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup')
 vbs_path = os.path.join(startup_dir, 'NetworkTracker.vbs')
-project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-python_exe = sys.executable
-pythonw_exe = os.path.join(os.path.dirname(python_exe), 'pythonw.exe')
-if not os.path.exists(pythonw_exe):
-    pythonw_exe = python_exe
-
+python_exe, pythonw_exe = get_python_executables()
 tracker_py = os.path.join(project_dir, 'tracker.py')
 tray_py = os.path.join(project_dir, 'tray_app.py')
 
-# Create a VBScript that runs everything cleanly in background
 vbs_content = f'''Set objShell = WScript.CreateObject("WScript.Shell")
 objShell.CurrentDirectory = "{project_dir}"
 
@@ -22,7 +22,7 @@ objShell.Run """{pythonw_exe}"" ""{tracker_py}""", 0, False
 ' Run Streamlit backend silently (headless)
 objShell.Run "streamlit run app.py --server.headless true", 0, False
 
-' Run System Tray Icon
+' Run System Tray Icon (with continuous telemetry watchdog)
 objShell.Run """{pythonw_exe}"" ""{tray_py}""", 0, False
 '''
 

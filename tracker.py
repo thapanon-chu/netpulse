@@ -8,6 +8,14 @@ import platform
 import socket
 import atexit
 import os
+import sys
+
+# Ensure stdout and stderr are available when running under pythonw.exe
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, 'w')
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, 'w')
+
 try:
     import speedtest
 except ImportError:
@@ -15,6 +23,33 @@ except ImportError:
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, 'network_data.db')
+
+# Single-instance Windows Mutex to strictly prevent duplicate competing tracker daemons
+_daemon_mutex_handle = None
+
+def acquire_single_instance_mutex():
+    global _daemon_mutex_handle
+    if platform.system() == 'Windows':
+        try:
+            import ctypes
+            _daemon_mutex_handle = ctypes.windll.kernel32.CreateMutexW(None, True, "NetPulse_Tracker_Daemon_SingleInstance")
+            if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+                return False
+        except Exception:
+            pass
+    return True
+
+def _cleanup_mutex():
+    global _daemon_mutex_handle
+    if _daemon_mutex_handle and platform.system() == 'Windows':
+        try:
+            import ctypes
+            ctypes.windll.kernel32.CloseHandle(_daemon_mutex_handle)
+        except Exception:
+            pass
+        _daemon_mutex_handle = None
+
+atexit.register(_cleanup_mutex)
 
 # Native Windows ICMP for ultra-fast ping without spawning PING.EXE subprocess.
 # This completely eliminates "PING.EXE - Application Error (0xc0000142)" during Windows shutdown.
@@ -257,12 +292,40 @@ def get_process_name(pid, cache):
         return "Unknown"
 
 def main():
-    init_db()
-    conn = sqlite3.connect(DB_FILE, timeout=10)
+    # Resilient startup loop in case DB is locked or system is booting
+    for _ in range(30):
+        try:
+            init_db()
+            break
+        except Exception:
+            time.sleep(1)
+
+    conn = None
+    for _ in range(30):
+        try:
+            conn = sqlite3.connect(DB_FILE, timeout=10)
+            conn.execute('PRAGMA journal_mode=WAL;')
+            break
+        except Exception:
+            time.sleep(1)
+
+    if not conn:
+        return
+
     c = conn.cursor()
-    c.execute('PRAGMA journal_mode=WAL;')
     
-    last_io = psutil.net_io_counters()
+    last_io = None
+    for _ in range(15):
+        try:
+            last_io = psutil.net_io_counters()
+            if last_io:
+                break
+        except Exception:
+            time.sleep(1)
+
+    if not last_io:
+        return
+
     last_time = time.time()
     
     process_cache = {}
@@ -379,4 +442,13 @@ def main():
         conn.close()
 
 if __name__ == '__main__':
-    main()
+    if not acquire_single_instance_mutex():
+        sys.exit(0)
+    while True:
+        try:
+            main()
+            time.sleep(1)
+        except KeyboardInterrupt:
+            break
+        except Exception:
+            time.sleep(2)

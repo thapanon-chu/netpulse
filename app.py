@@ -25,6 +25,10 @@ DB_FILE = os.path.join(BASE_DIR, 'network_data.db')
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 import analytics
+from daemon_manager import ensure_tracker_running, get_tracker_health
+
+# Ensure telemetry background daemon is always alive whenever dashboard is open
+ensure_tracker_running()
 
 USER_SETTINGS_FILE = os.path.join(BASE_DIR, "user_settings.json")
 
@@ -3169,7 +3173,14 @@ with col_main:
                 enable_anom = st.session_state.get("persistent_highlight_anomalies", active_cfg.get("highlight_anomalies", True))
 
                 if chart_bw.empty:
-                    st.markdown('<div style="padding: 40px; text-align: center; color: #8e9cb2;">No throughput records found for this timeframe.</div>', unsafe_allow_html=True)
+                    health = get_tracker_health()
+                    if not health.get("running"):
+                        ensure_tracker_running()
+                        st.markdown('<div style="padding: 44px; text-align: center;"><div style="font-size: 1.05rem; font-weight: 600; color: #38bdf8; margin-bottom: 6px;">Initializing Telemetry Daemon...</div><div style="font-size: 0.85rem; color: #8e9cb2;">Auto-starting NetPulse telemetry collector in background. Capturing initial socket activity...</div></div>', unsafe_allow_html=True)
+                        time.sleep(2)
+                        st.rerun()
+                    else:
+                        st.markdown('<div style="padding: 40px; text-align: center; color: #8e9cb2;">No throughput records found for this timeframe.</div>', unsafe_allow_html=True)
                 else:
                     plot_df = chart_bw.copy()
                     plot_df['Download (KB/s)'] = plot_df['recv_speed_bps'] / 1024.0
