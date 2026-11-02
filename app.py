@@ -1037,7 +1037,9 @@ div.st-key-chart_action_ctrls > div[data-testid="stVerticalBlock"],
 div.st-key-proc_timeline_box,
 div.st-key-proc_timeline_box > div[data-testid="stVerticalBlock"],
 div.st-key-cap_subview_box,
-div.st-key-cap_subview_box > div[data-testid="stVerticalBlock"] {
+div.st-key-cap_subview_box > div[data-testid="stVerticalBlock"],
+div.st-key-bench_48_ctrls,
+div.st-key-bench_48_ctrls > div[data-testid="stVerticalBlock"] {
   display: flex !important;
   flex-direction: row !important;
   justify-content: flex-end !important;
@@ -2236,6 +2238,47 @@ def format_bytes_human(bytes_val):
     elif val >= 1024:
         return f"{val / 1024:,.1f} KB"
     return f"{val:,.0f} B"
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_48_round_peak_profile():
+    """
+    Computes all-time peak download and upload speeds across all 48 half-hour test slots (00:00 - 23:30).
+    Guarantees full 48-slot coverage even if specific slots have zero tests.
+    """
+    all_slots = [f"{h:02d}:{m:02d}" for h in range(24) for m in (0, 30)]
+    template_df = pd.DataFrame({'slot': all_slots})
+
+    if not os.path.exists(DB_FILE):
+        template_df['max_dl_mbps'] = 0.0
+        template_df['max_ul_mbps'] = 0.0
+        template_df['test_count'] = 0
+        return template_df
+
+    try:
+        conn = sqlite3.connect(DB_FILE, timeout=10)
+        query = """
+        SELECT 
+            printf('%02d:%02d', 
+                CAST(strftime('%H', timestamp) AS INTEGER), 
+                CASE WHEN CAST(strftime('%M', timestamp) AS INTEGER) < 30 THEN 0 ELSE 30 END
+            ) AS slot,
+            ROUND(MAX(download_bps) / (1024.0 * 1024.0), 1) AS max_dl_mbps,
+            ROUND(MAX(upload_bps) / (1024.0 * 1024.0), 1) AS max_ul_mbps,
+            COUNT(*) AS test_count
+        FROM speedtest
+        GROUP BY slot
+        ORDER BY slot ASC
+        """
+        df = pd.read_sql_query(query, conn)
+        conn.close()
+        merged = pd.merge(template_df, df, on='slot', how='left').fillna(0.0)
+        return merged
+    except Exception:
+        template_df['max_dl_mbps'] = 0.0
+        template_df['max_ul_mbps'] = 0.0
+        template_df['test_count'] = 0
+        return template_df
 
 
 @st.cache_data(ttl=180, show_spinner=False)
@@ -3713,6 +3756,75 @@ with col_main:
                 fig_bench.update_layout(margin=dict(l=10, r=10, t=28, b=10))
 
                 st.plotly_chart(fig_bench, use_container_width=True)
+
+        # Card 3: 48-Round All-Time Peak Capacity Profile
+        with st.container(key="panel_bench_48"):
+            profile_48_df = get_48_round_peak_profile()
+            max_dl_overall = profile_48_df['max_dl_mbps'].max() if not profile_48_df.empty else 0.0
+            max_ul_overall = profile_48_df['max_ul_mbps'].max() if not profile_48_df.empty else 0.0
+            total_tests = int(profile_48_df['test_count'].sum()) if not profile_48_df.empty else 0
+
+            col_48_head, col_48_ctrl = st.columns([3.2, 1.8], vertical_alignment="center")
+            with col_48_head:
+                st.markdown(f"""
+                <div>
+                    <h2 class="panel-title">Peak capacity across 48 daily intervals</h2>
+                    <p class="panel-subtitle">Highest recorded speed per 30-min test slot (00:00 – 23:30) · All-time peak: <span style="color: #00d2ff; font-weight: 600;">{max_dl_overall:.0f} Mbps DL</span> / <span style="color: #f43f5e; font-weight: 600;">{max_ul_overall:.0f} Mbps UL</span> ({total_tests:,} tests)</p>
+                </div>
+                """, unsafe_allow_html=True)
+            with col_48_ctrl:
+                with st.container(key="bench_48_ctrls"):
+                    bench_48_filter = st.pills(
+                        "48-Round Filter",
+                        options=["Both", "Download", "Upload"],
+                        default="Both",
+                        label_visibility="collapsed",
+                        key="pills_bench_48_filter"
+                    )
+
+            if profile_48_df.empty or (max_dl_overall == 0 and max_ul_overall == 0):
+                st.markdown('<div style="padding: 40px; text-align: center; color: #8e9cb2;">No historical speedtest intervals recorded yet.</div>', unsafe_allow_html=True)
+            else:
+                fig_48 = go.Figure()
+
+                if bench_48_filter in ["Both", "Download"]:
+                    fig_48.add_trace(go.Bar(
+                        x=profile_48_df['slot'],
+                        y=profile_48_df['max_dl_mbps'],
+                        name='Download',
+                        marker=dict(color='#00d2ff', cornerradius=3),
+                        hovertemplate="Interval: <b>%{x}</b><br>Peak Download: <b>%{y} Mbps</b><extra></extra>"
+                    ))
+
+                if bench_48_filter in ["Both", "Upload"]:
+                    fig_48.add_trace(go.Bar(
+                        x=profile_48_df['slot'],
+                        y=profile_48_df['max_ul_mbps'],
+                        name='Upload',
+                        marker=dict(color='#f43f5e', cornerradius=3),
+                        hovertemplate="Interval: <b>%{x}</b><br>Peak Upload: <b>%{y} Mbps</b><extra></extra>"
+                    ))
+
+                fig_48.update_layout(
+                    barmode='group' if bench_48_filter == "Both" else 'relative',
+                    bargap=0.18,
+                    bargroupgap=0.04
+                )
+
+                # Show 2-hour interval ticks on X axis for clear, readable labels
+                fig_48.update_xaxes(
+                    tickmode='array',
+                    tickvals=[f"{h:02d}:00" for h in range(0, 24, 2)],
+                    ticktext=[f"{h:02d}:00" for h in range(0, 24, 2)]
+                )
+
+                upper_48 = max(100, int(max(max_dl_overall, max_ul_overall) * 1.20))
+                fig_48.update_yaxes(range=[0, upper_48])
+
+                apply_netpulse_plotly_theme(fig_48, height=220)
+                fig_48.update_layout(margin=dict(l=10, r=10, t=14, b=10))
+
+                st.plotly_chart(fig_48, use_container_width=True)
 
 
     # ==========================================================================
