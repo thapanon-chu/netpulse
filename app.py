@@ -2226,13 +2226,16 @@ def format_speed_human_str(kb):
 
 
 def format_bytes_human(bytes_val):
-    if bytes_val >= 1024 * 1024 * 1024:
-        return f"{bytes_val / (1024*1024*1024):,.2f} GB"
-    elif bytes_val >= 1024 * 1024:
-        return f"{bytes_val / (1024*1024):,.2f} MB"
-    elif bytes_val >= 1024:
-        return f"{bytes_val / 1024:,.1f} KB"
-    return f"{bytes_val:,.0f} B"
+    if pd.isna(bytes_val) or bytes_val is None:
+        return "0 B"
+    val = float(bytes_val)
+    if val >= 1024 * 1024 * 1024:
+        return f"{val / (1024*1024*1024):,.2f} GB"
+    elif val >= 1024 * 1024:
+        return f"{val / (1024*1024):,.2f} MB"
+    elif val >= 1024:
+        return f"{val / 1024:,.1f} KB"
+    return f"{val:,.0f} B"
 
 
 @st.cache_data(ttl=180, show_spinner=False)
@@ -3375,6 +3378,7 @@ with col_main:
                 else:
                     p_plot_df = bw_df.copy()
                     fig_timeline = go.Figure()
+                    time_fmt = "%b %d, %H:%M:%S" if selected_scope in ["7 Days", "30 Days", "Calendar"] else "%H:%M:%S"
 
                     if timeline_type == "Cumulative":
                         dl_diff = p_plot_df['bytes_recv'].diff().apply(lambda x: x if (pd.notna(x) and x >= 0) else 0)
@@ -3385,19 +3389,26 @@ with col_main:
                             p_plot_df = peak_preserving_downsample(p_plot_df, val_cols=['cum_dl_mb', 'cum_ul_mb'], max_points=3600)
                         clean_timeline_df = sanitize_timeseries_gaps(p_plot_df, val_cols=['cum_dl_mb', 'cum_ul_mb'], fill_zero=False)
 
+                        clean_timeline_df['dl_formatted'] = (clean_timeline_df['cum_dl_mb'] * (1024.0 * 1024.0)).apply(format_bytes_human)
+                        clean_timeline_df['ul_formatted'] = (clean_timeline_df['cum_ul_mb'] * (1024.0 * 1024.0)).apply(format_bytes_human)
+
                         fig_timeline.add_trace(go.Scatter(
                             x=clean_timeline_df['timestamp'], y=clean_timeline_df['cum_dl_mb'],
-                            name='Download (MB)', mode='lines',
+                            customdata=clean_timeline_df['dl_formatted'],
+                            name='Download', mode='lines',
                             line=dict(color='#00d2ff', width=1.8),
                             connectgaps=False,
-                            fill='tozeroy', fillcolor='rgba(0, 210, 255, 0.04)'
+                            fill='tozeroy', fillcolor='rgba(0, 210, 255, 0.04)',
+                            hovertemplate=f"Time: %{{x|{time_fmt}}}<br>Download: <b>%{{customdata}}</b><extra></extra>"
                         ))
                         fig_timeline.add_trace(go.Scatter(
                             x=clean_timeline_df['timestamp'], y=clean_timeline_df['cum_ul_mb'],
-                            name='Upload (MB)', mode='lines',
+                            customdata=clean_timeline_df['ul_formatted'],
+                            name='Upload', mode='lines',
                             line=dict(color='#f43f5e', width=1.8),
                             connectgaps=False,
-                            fill='tozeroy', fillcolor='rgba(244, 63, 94, 0.04)'
+                            fill='tozeroy', fillcolor='rgba(244, 63, 94, 0.04)',
+                            hovertemplate=f"Time: %{{x|{time_fmt}}}<br>Upload: <b>%{{customdata}}</b><extra></extra>"
                         ))
                     else:
                         proc_cfg = load_user_settings()
@@ -3414,23 +3425,30 @@ with col_main:
                             p_plot_df = peak_preserving_downsample(p_plot_df, val_cols=['rate_dl_mb', 'rate_ul_mb'], max_points=3600)
                         clean_timeline_df = sanitize_timeseries_gaps(p_plot_df, val_cols=['rate_dl_mb', 'rate_ul_mb'], fill_zero=True)
 
+                        clean_timeline_df['dl_formatted'] = (clean_timeline_df['rate_dl_mb'] * 1024.0).apply(format_speed_human_str)
+                        clean_timeline_df['ul_formatted'] = (clean_timeline_df['rate_ul_mb'] * 1024.0).apply(format_speed_human_str)
+
                         line_shape = 'linear' if proc_smooth == 1 else 'spline'
                         line_smooth = 0.5 if proc_smooth == 5 else (1.0 if proc_smooth == 10 else 0.5)
                         line_w = 2.2 if proc_smooth == 10 else 1.8
 
                         fig_timeline.add_trace(go.Scatter(
                             x=clean_timeline_df['timestamp'], y=clean_timeline_df['rate_dl_mb'],
-                            name='Inbound (MB/s)', mode='lines',
+                            customdata=clean_timeline_df['dl_formatted'],
+                            name='Download', mode='lines',
                             line=dict(color='#00d2ff', width=line_w, shape=line_shape, smoothing=line_smooth),
                             connectgaps=False,
-                            fill='tozeroy', fillcolor='rgba(0, 210, 255, 0.04)'
+                            fill='tozeroy', fillcolor='rgba(0, 210, 255, 0.04)',
+                            hovertemplate=f"Time: %{{x|{time_fmt}}}<br>Download: <b>%{{customdata}}</b><extra></extra>"
                         ))
                         fig_timeline.add_trace(go.Scatter(
                             x=clean_timeline_df['timestamp'], y=clean_timeline_df['rate_ul_mb'],
-                            name='Outbound (MB/s)', mode='lines',
+                            customdata=clean_timeline_df['ul_formatted'],
+                            name='Upload', mode='lines',
                             line=dict(color='#f43f5e', width=line_w, shape=line_shape, smoothing=line_smooth),
                             connectgaps=False,
-                            fill='tozeroy', fillcolor='rgba(244, 63, 94, 0.04)'
+                            fill='tozeroy', fillcolor='rgba(244, 63, 94, 0.04)',
+                            hovertemplate=f"Time: %{{x|{time_fmt}}}<br>Upload: <b>%{{customdata}}</b><extra></extra>"
                         ))
 
                     apply_netpulse_plotly_theme(fig_timeline, height=340)
